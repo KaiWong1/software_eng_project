@@ -2,9 +2,7 @@
 Kai Wong
 
 References: https://randomnerdtutorials.com/esp32-tft-lvgl-weather-station/
-
 */
-
 
 #include "SPI.h"
 #include "Adafruit_GFX.h"
@@ -13,13 +11,13 @@ References: https://randomnerdtutorials.com/esp32-tft-lvgl-weather-station/
 #include "HTTPClient.h"
 #include "ArduinoJson.h"
 
-// For the Adafruit shield, these are the default.
+// For the Adafruit shield, these are the default pins.
 #define TFT_DC 4
 #define TFT_CS 15
-#define TFT_RST 2 //disconnect this pin when uploading.
-#define TFT_MISO 19         
-#define TFT_MOSI 23           
-#define TFT_CLK 18 
+#define TFT_RST 2 // Disconnect this pin when uploading.
+#define TFT_MISO 19
+#define TFT_MOSI 23
+#define TFT_CLK 18
 
 Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, TFT_MOSI, TFT_CLK, TFT_RST, TFT_MISO);
 
@@ -39,9 +37,9 @@ int is_day;
 int weather_code = 0;
 String weather_description;
 
-#define TEMP_CELCIUS 0;
+#define TEMP_CELCIUS 0
 
-#if TEMP_CELSIUS
+#if TEMP_CELCIUS
   String temperature_unit = "";
   const char degree_symbol[] = "\u00B0C";
 #else
@@ -50,74 +48,33 @@ String weather_description;
 #endif
 
 
-void setup() {
 
-  //Serial.begin(9600);
-  Serial.begin(115200);
-  Serial.println("Booting"); 
- 
-  //connect to wifi
-  WiFi.begin(ssid, password);
-  Serial.print("connecting");
-  
-  tft.begin();
-  //if esp32 connects to internet, go to loop
-  //if else, stay on bootUp();
-  if (WiFi.status() == WL_CONNECTED)
-  {
-    getWeatherData();
-  }
-  else
-  {
-  bootUp();
-  }
-}
-  /* Shows the bootup screen when the ESP32 is connecting to the internet. 
-  After connecting to the internet the bootup screen will go away and load
-  the weather related GUI elements. 
-  */
-unsigned long bootUp() 
+void bootUp() 
 {
   tft.fillScreen(ILI9341_BLACK);
-  unsigned long start = micros();
-  tft.setCursor(0,100);
+  tft.setCursor(0, 100);
   tft.setTextColor(ILI9341_GREEN);
   tft.setTextSize(3);
   tft.println("Connecting to");
   tft.println("the internet!");
-  return micros() - start;
 
-  if (WiFi.status() == WL_CONNECTED)
-  {
-    getWeatherData();
-  }
-  else
-  {
-    bootUp();
-  }
-    
-}
-
-unsigned long weatherGUI()
-{
+  delay(2000);
 
 }
 
-unsigned long connectToInternet()
+void connectToInternet() 
 {
-  {
   WiFi.begin(ssid, password);
   Serial.print("Connecting");
+
   while (WiFi.status() != WL_CONNECTED) 
-    {
+  {
     delay(500);
     Serial.print(".");
-    }
   }
 
-Serial.print("\nConnected to Wi-Fi network with IP Address: ");
-Serial.println(WiFi.localIP());
-
+  Serial.print("\nConnected to Wi-Fi network with IP Address: ");
+  Serial.println(WiFi.localIP());
 }
 
 void getWeatherData()
@@ -180,14 +137,56 @@ void getWeatherData()
 }
 
 
-void loop() 
+void weatherGUI() 
 {
-  tft.setRotation(0);
-  /*if ESP32 connects to internet proceed with GUI elements.
-  If else, then the ESP32 will keep running BootUp() in void setup(). Maybe
-  add a RTOS? */
+  tft.fillScreen(ILI9341_BLACK);
+  tft.setCursor(10, 10);
+  tft.setTextColor(ILI9341_WHITE);
+  tft.setTextSize(2);
 
-  //delay(1000);
-
+  tft.println("Weather Information:");
+  tft.println("Location: " + location);
+  tft.println("Temperature: " + temperature + degree_symbol);
+  tft.println("Humidity: " + humidity + "%");
 }
 
+
+void setup() 
+{
+  Serial.begin(9600);
+  Serial.println("Booting");
+
+  // Initialize TFT
+  tft.begin();
+  tft.fillScreen(ILI9341_BLACK);
+  tft.setRotation(0);
+
+  bootUp();
+
+  // Connect to Wi-Fi
+  connectToInternet();
+
+  if (WiFi.status() == WL_CONNECTED) 
+  {
+    getWeatherData();
+  } 
+  else 
+  {
+    bootUp();
+  }
+}
+
+void loop() 
+{
+  if (WiFi.status() != WL_CONNECTED) 
+  {
+    bootUp();
+  } 
+  else 
+  {
+    // Placeholder for weather GUI
+    weatherGUI();
+  }
+
+  delay(10000); // Update every 10 seconds
+}
