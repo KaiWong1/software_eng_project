@@ -47,6 +47,19 @@ String weather_description;
   const char degree_symbol[] = "\u00B0F";
 #endif
 
+void weatherGUI() 
+{
+  tft.fillScreen(ILI9341_BLACK);
+  tft.setCursor(10, 10);
+  tft.setTextColor(ILI9341_WHITE);
+  tft.setTextSize(2);
+
+  tft.println("Weather Information:");
+  tft.println("Location: " + location);
+  tft.println("Temperature: " + temperature + degree_symbol);
+  tft.println("Humidity: " + humidity + "%");
+}
+
 void setup() 
 {
   Serial.begin(115200);
@@ -63,7 +76,8 @@ void setup()
   if (WiFi.status() == WL_CONNECTED) 
   {
     getWeatherData();
-  } else 
+  } 
+  else 
   {
     bootUp();
   }
@@ -160,15 +174,4 @@ void loop() {
   delay(10000); // Update every 10 seconds
 }
 
-void weatherGUI() 
-{
-  tft.fillScreen(ILI9341_BLACK);
-  tft.setCursor(10, 10);
-  tft.setTextColor(ILI9341_WHITE);
-  tft.setTextSize(2);
 
-  tft.println("Weather Information:");
-  tft.println("Location: " + location);
-  tft.println("Temperature: " + temperature + degree_symbol);
-  tft.println("Humidity: " + humidity + "%");
-}
