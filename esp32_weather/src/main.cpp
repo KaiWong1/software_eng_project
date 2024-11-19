@@ -47,41 +47,7 @@ String weather_description;
   const char degree_symbol[] = "\u00B0F";
 #endif
 
-void weatherGUI() 
-{
-  tft.fillScreen(ILI9341_BLACK);
-  tft.setCursor(10, 10);
-  tft.setTextColor(ILI9341_WHITE);
-  tft.setTextSize(2);
 
-  tft.println("Weather Information:");
-  tft.println("Location: " + location);
-  tft.println("Temperature: " + temperature + degree_symbol);
-  tft.println("Humidity: " + humidity + "%");
-}
-
-void setup() 
-{
-  Serial.begin(115200);
-  Serial.println("Booting");
-
-  // Initialize TFT
-  tft.begin();
-  tft.fillScreen(ILI9341_BLACK);
-  tft.setRotation(0);
-
-  // Connect to Wi-Fi
-  connectToInternet();
-
-  if (WiFi.status() == WL_CONNECTED) 
-  {
-    getWeatherData();
-  } 
-  else 
-  {
-    bootUp();
-  }
-}
 
 void bootUp() 
 {
@@ -92,7 +58,8 @@ void bootUp()
   tft.println("Connecting to");
   tft.println("the internet!");
 
-  connectToInternet();
+  delay(2000);
+
 }
 
 void connectToInternet() 
@@ -110,40 +77,48 @@ void connectToInternet()
   Serial.println(WiFi.localIP());
 }
 
-void getWeatherData() 
+void getWeatherData()
 {
   if (WiFi.status() == WL_CONNECTED) 
   {
     HTTPClient http;
-    String url = "http://api.open-meteo.com/v1/forecast?latitude=" + latitude +
-                 "&longitude=" + longitude +
-                 "&current_weather=true&timezone=" + timezone + temperature_unit;
-
+    // Construct the API endpoint
+    String url = String("http://api.open-meteo.com/v1/forecast?latitude=" + latitude + "&longitude=" + longitude + "&current=temperature_2m,relative_humidity_2m,is_day,precipitation,rain,weather_code" + temperature_unit + "&timezone=" + timezone + "&forecast_days=1");
     http.begin(url);
-    int httpCode = http.GET();
+    int httpCode = http.GET(); // Make the GET request
 
     if (httpCode > 0) 
     {
+      // Check for the response
       if (httpCode == HTTP_CODE_OK) 
       {
         String payload = http.getString();
-        StaticJsonDocument<1024> doc;
-
+        //Serial.println("Request information:");
+        //Serial.println(payload);
+        // Parse the JSON to extract the time
+        JsonDocument doc;
         DeserializationError error = deserializeJson(doc, payload);
         if (!error) 
         {
-          temperature = String(doc["current_weather"]["temperature"]);
-          humidity = String(doc["current_weather"]["humidity"]);
-          is_day = doc["current_weather"]["is_day"];
-          weather_code = doc["current_weather"]["weather_code"];
-
-          Serial.println("Weather Data Retrieved:");
-          Serial.println("Temperature: " + temperature + degree_symbol);
-          Serial.println("Humidity: " + humidity);
+          const char* datetime = doc["current"]["time"];
+          temperature = String(doc["current"]["temperature_2m"]);
+          humidity = String(doc["current"]["relative_humidity_2m"]);
+          is_day = String(doc["current"]["is_day"]).toInt();
+          weather_code = String(doc["current"]["weather_code"]).toInt();
+          /*Serial.println(temperature);
+          Serial.println(humidity);
+          Serial.println(is_day);
+          Serial.println(weather_code);
+          Serial.println(String(timezone));*/
+          // Split the datetime into date and time
+          String datetime_str = String(datetime);
+          int splitIndex = datetime_str.indexOf('T');
+          current_date = datetime_str.substring(0, splitIndex);
+          last_weather_update = datetime_str.substring(splitIndex + 1, splitIndex + 9); // Extract time portion
         } 
         else 
         {
-          Serial.print("JSON Parsing failed: ");
+          Serial.print("deserializeJson() failed: ");
           Serial.println(error.c_str());
         }
       }
@@ -152,15 +127,57 @@ void getWeatherData()
     {
       Serial.printf("GET request failed, error: %s\n", http.errorToString(httpCode).c_str());
     }
-    http.end();
+    http.end(); // Close connection
   } 
   else 
   {
     Serial.println("Not connected to Wi-Fi");
   }
+
 }
 
-void loop() {
+
+void weatherGUI() 
+{
+  tft.fillScreen(ILI9341_BLACK);
+  tft.setCursor(10, 10);
+  tft.setTextColor(ILI9341_WHITE);
+  tft.setTextSize(2);
+
+  tft.println("Weather Information:");
+  tft.println("Location: " + location);
+  tft.println("Temperature: " + temperature + degree_symbol);
+  tft.println("Humidity: " + humidity + "%");
+}
+
+
+void setup() 
+{
+  Serial.begin(9600);
+  Serial.println("Booting");
+
+  // Initialize TFT
+  tft.begin();
+  tft.fillScreen(ILI9341_BLACK);
+  tft.setRotation(0);
+
+  bootUp();
+
+  // Connect to Wi-Fi
+  connectToInternet();
+
+  if (WiFi.status() == WL_CONNECTED) 
+  {
+    getWeatherData();
+  } 
+  else 
+  {
+    bootUp();
+  }
+}
+
+void loop() 
+{
   if (WiFi.status() != WL_CONNECTED) 
   {
     bootUp();
@@ -173,5 +190,3 @@ void loop() {
 
   delay(10000); // Update every 10 seconds
 }
-
-
