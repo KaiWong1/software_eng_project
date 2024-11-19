@@ -10,6 +10,7 @@ References: https://randomnerdtutorials.com/esp32-tft-lvgl-weather-station/
 #include "WiFi.h"
 #include "HTTPClient.h"
 #include "ArduinoJson.h"
+#include "FS.h"
 
 // For the Adafruit shield, these are the default pins.
 #define TFT_DC 4
@@ -101,10 +102,10 @@ void getWeatherData()
         if (!error) 
         {
           const char* datetime = doc["current"]["time"];
-          temperature = String(doc["current"]["temperature_2m"]);
-          humidity = String(doc["current"]["relative_humidity_2m"]);
-          is_day = String(doc["current"]["is_day"]).toInt();
-          weather_code = String(doc["current"]["weather_code"]).toInt();
+          temperature = String(doc["current"]["temperature_2m"].as<float>());
+          humidity = String(doc["current"]["relative_humidity_2m"].as<float>());
+          is_day = String(doc["current"]["is_day"].as<int>()).toInt();
+          weather_code = String(doc["current"]["weather_code"].as<int>()).toInt();
           /*Serial.println(temperature);
           Serial.println(humidity);
           Serial.println(is_day);
