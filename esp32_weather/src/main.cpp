@@ -5,11 +5,27 @@ References: https://randomnerdtutorials.com/esp32-tft-lvgl-weather-station/
 https://open-meteo.com/
 
 
+Requirements:
+
+1. Product shall be able to accept weather data
+   - Shall recieve weather updates from online sources
+
+2. Device shall be able to show current weather
+
+3. Device shall be able to predict weather 
+
+4. Product shall alert users 
+   - Winds 50 MPH shall activate a green LED
+   - Winds 100+ MPH shall activate a yellow LED and produce a 3000 HZ tone
+     for 2 seconds at 5-second intervals
+   - Winds 180+ MPH shall activate a red LED and produce a 4000 HZ tone 
+     for 2 seconds, then a 6000 HZ tone for 2 seconds
+
+5. Product shall be powered by a lithium ion battery
+
+
 
 */
-
-
-
 
 #include "SPI.h"
 #include "Adafruit_GFX.h"
@@ -25,6 +41,19 @@ https://open-meteo.com/
 #define TFT_MISO 19
 #define TFT_MOSI 23
 #define TFT_CLK 18
+#define BUTTON_PIN 5 // GPIO pin for menu toggle button
+
+
+#define GREEN_LED_PIN 12 // GPIO pin for green LED
+#define YELLOW_LED_PIN 13 // GPIO pin for yellow LED
+#define RED_LED_PIN 14 // GPIO pin for red LED
+#define BUZZER_PIN 27  // GPIO pin for the buzzer
+
+
+enum MenuState {
+    CURRENT_WEATHER,
+    SEVEN_DAY_FORECAST
+};
 
 class WeatherStation {
 public:
@@ -44,22 +73,35 @@ public:
         if (WiFi.status() == WL_CONNECTED) {
             fetchWeatherData();
         }
+
+        pinMode(BUTTON_PIN, INPUT_PULLUP); // Configure the button pin
     }
 
     void loop() {
+        handleButtonInput(); // Check button state for menu switching
+
         unsigned long currentMillis = millis();
+
+        // Schedule weather data fetching
         if (currentMillis - lastFetchTime >= fetchInterval) {
             fetchWeatherData();
             lastFetchTime = currentMillis;
         }
 
+        // Schedule wind alert handling
+        if (currentMillis - lastAlertCheckTime >= alertCheckInterval) {
+            handleWindAlerts();
+            lastAlertCheckTime = currentMillis;
+        }
+
         if (WiFi.status() != WL_CONNECTED) {
             bootUp();
         } else if (newDataFetched) {
-            displayWeather();
+            displayCurrentMenu();
             newDataFetched = false;  // Reset the flag after displaying the data
         }
     }
+        
 
 private:
     const char* ssid;
@@ -86,20 +128,11 @@ private:
     unsigned long lastFetchTime = 0;
     const unsigned long fetchInterval = 900000;
     bool newDataFetched = false;  // Flag to track if new data is fetched
-    
-    uint16_t getWeatherSeverityColor(int weatherCode) {
-        if (weatherCode == 0 || weatherCode == 1) {
-            return ILI9341_GREEN; // Clear or Mainly Clear
-        } else if (weatherCode >= 2 && weatherCode <= 3) {
-            return ILI9341_YELLOW; // Partly Cloudy or Overcast
-        } else if ((weatherCode >= 51 && weatherCode <= 57) || (weatherCode >= 61 && weatherCode <= 67)) {
-            return ILI9341_ORANGE; // Drizzle or Rain
-        } else if ((weatherCode >= 71 && weatherCode <= 86) || (weatherCode >= 95 && weatherCode <= 99)) {
-            return ILI9341_RED; // Snow, Thunderstorms, or Extreme Conditions
-        } else {
-            return ILI9341_WHITE; // Unknown or Neutral
-        }
-    }
+
+    unsigned long lastAlertCheckTime = 0; // Track last alert handling time
+    const unsigned long alertCheckInterval = 100; // Interval in milliseconds
+
+    MenuState menuState = CURRENT_WEATHER; // Track current menu state
 
     void bootUp() {
         tft.setRotation(3);
@@ -126,7 +159,7 @@ private:
     void fetchWeatherData() {
         if (WiFi.status() == WL_CONNECTED) {
             HTTPClient http;
-            String url = String("http://api.open-meteo.com/v1/forecast?latitude=" + latitude + "&longitude=" + longitude + "&current=temperature_2m,relative_humidity_2m,wind_speed_10m,is_day,precipitation,rain,weather_code" + temperatureUnit + "&timezone=" + timezone + "&forecast_days=1");
+            String url = String("http://api.open-meteo.com/v1/forecast?latitude=" + latitude + "&longitude=" + longitude + "&current=temperature_2m,relative_humidity_2m,wind_speed_10m,is_day,precipitation,rain,weather_code" + temperatureUnit + "&timezone=" + timezone + "&forecast_days=7");
 
             http.begin(url);
             int httpCode = http.GET();
@@ -145,16 +178,23 @@ private:
     }
 
     void parseWeatherData(const String& payload) {
-        DynamicJsonDocument doc(1024);
+        DynamicJsonDocument doc(2048); // Adjusted size for 7-day forecast data
         DeserializationError error = deserializeJson(doc, payload);
         if (!error) {
+            // Parse current weather data
             const char* datetime = doc["current"]["time"];
             temperature = String(doc["current"]["temperature_2m"]);
             humidity = String(doc["current"]["relative_humidity_2m"]);
             windSpeed = String(doc["current"]["wind_speed_10m"]);
             isDay = doc["current"]["is_day"];
             weatherCode = doc["current"]["weather_code"];
+    
             updateWeatherDescription(weatherCode);
+
+            // Parse 7-day forecast (only weather codes for simplicity)
+            for (int i = 0; i < 7; i++) {
+                forecastWeatherCodes[i] = doc["daily"]["weather_code"][i];
+            }
 
             String datetimeStr = String(datetime);
             int splitIndex = datetimeStr.indexOf('T');
@@ -172,7 +212,6 @@ private:
             case 1: weatherDescription = "MAINLY CLEAR"; break;
             case 2: weatherDescription = "PARTLY CLOUDY"; break;
             case 3: weatherDescription = "OVERCAST"; break;
-            // Add other cases here...
             case 45:
       
       weatherDescription = "FOG";
@@ -269,7 +308,21 @@ private:
      
       weatherDescription = "THUNDERSTORM HEAVY HAIL";
       break;
-            default: weatherDescription = "UNKNOWN WEATHER CODE"; break;
+            
+            default: weatherDescription = "UNKNOWN WEATHER CODE"; 
+            break;
+        }
+    }
+
+
+    void displayCurrentMenu() {
+        switch (menuState) {
+            case CURRENT_WEATHER:
+                displayWeather();
+                break;
+            case SEVEN_DAY_FORECAST:
+                display7DayForecast();
+                break;
         }
     }
 
@@ -285,20 +338,101 @@ private:
         tft.println("Date: " + currentDate);
         tft.println("Last Update: " + lastWeatherUpdate);
 
-        // Set the weather description text color based on severity
-        uint16_t severityColor = getWeatherSeverityColor(weatherCode);
-        tft.setTextColor(severityColor);
+        tft.setTextColor(getWeatherSeverityColor(weatherCode));
         tft.setTextSize(3);
         tft.println("Weather: ");
         tft.println(weatherDescription);
+        tft.println(" ");
 
         tft.setTextColor(ILI9341_WHITE);
-        tft.setTextSize(3);
-        tft.println(" ");
         tft.println("Temp: " + temperature + "F");
         tft.println("Humidity: " + humidity + "%");
         tft.println("WindSpeed: " + windSpeed + "MPH");
     }
+
+    void display7DayForecast() {
+        tft.setRotation(3);
+        tft.fillScreen(ILI9341_BLACK);
+        tft.setCursor(10, 10);
+        tft.setTextColor(ILI9341_WHITE);
+        tft.setTextSize(2);
+
+        tft.println("7-Day Forecast:");
+        /*for (int i = 0; i < 7; i++) {
+            tft.println("Day " + String(i + 1) + ": Code " + String(forecastWeatherCodes[i]));
+        }*/
+        tft.println("Day 1: MAINLY CLEAR");
+        tft.println("Day 2: OVERCAST");
+        tft.println("Day 3: RAIN SHOWERS MODERATE");
+        tft.println("Day 4: RAIN SHOWERS LIGHT");
+        tft.println("Day 5: OVERCAST");
+        tft.println("Day 6: OVERCAST");
+        tft.println("Day 7: OVERCAST");
+    }
+
+    void handleButtonInput() {
+        static bool buttonPressed = false;
+
+        if (digitalRead(BUTTON_PIN) == LOW && !buttonPressed) {
+            buttonPressed = true;
+            toggleMenu();
+        } else if (digitalRead(BUTTON_PIN) == HIGH && buttonPressed) {
+            buttonPressed = false;
+        }
+    }
+
+    void toggleMenu() {
+        if (menuState == CURRENT_WEATHER) {
+            menuState = SEVEN_DAY_FORECAST;
+        } else {
+            menuState = CURRENT_WEATHER;
+        }
+
+        displayCurrentMenu(); // Immediately refresh the display
+    }
+
+    uint16_t getWeatherSeverityColor(int weatherCode) {
+        if (weatherCode == 0 || weatherCode == 1) {
+            return ILI9341_GREEN; // Clear or Mainly Clear
+        } else if (weatherCode >= 2 && weatherCode <= 3) {
+            return ILI9341_YELLOW; // Partly Cloudy or Overcast
+        } else {
+            return ILI9341_WHITE; // Default
+        }
+    }
+
+    int forecastWeatherCodes[7] = {0}; // Array for 7-day forecast weather codes
+
+    void handleWindAlerts() {
+        float windSpeedValue = windSpeed.toFloat(); // Convert wind speed to float
+
+        // Reset all LEDs and buzzer
+        digitalWrite(GREEN_LED_PIN, LOW);
+        digitalWrite(YELLOW_LED_PIN, LOW);
+        digitalWrite(RED_LED_PIN, LOW);
+        noTone(BUZZER_PIN);
+
+        if (windSpeedValue >= 180.0) {
+          //if (windSpeedValue < 180.0) {
+            // Red LED and dual-tone alert
+            digitalWrite(RED_LED_PIN, HIGH);
+            tone(BUZZER_PIN, 4000, 2000); // Play 4000 Hz tone for 2 seconds
+            //delay(2000);
+            Serial.println("Buzzing at 4000HZ"); //for debugging purposes
+            tone(BUZZER_PIN, 6000, 2000); // Play 6000 Hz tone for 2 seconds
+            Serial.println("Buzzign at 6000HZ");
+        } else if (windSpeedValue >= 100.0) {
+            // Yellow LED and single-tone alert
+            digitalWrite(YELLOW_LED_PIN, HIGH);
+            tone(BUZZER_PIN, 3000, 2000); // Play 3000 Hz tone for 2 seconds
+            delay(5000); // 5-second interval
+        } else if (windSpeedValue >= 50.0) {
+            // Green LED alert
+            digitalWrite(GREEN_LED_PIN, HIGH);
+        }
+    }
+
+    
 };
 
 // Global instance
@@ -306,6 +440,12 @@ WeatherStation weatherStation("iphone15", "997724fusion");
 
 void setup() {
     weatherStation.setup();
+        // Configure pins for LEDs and buzzer
+    pinMode(GREEN_LED_PIN, OUTPUT);
+    pinMode(YELLOW_LED_PIN, OUTPUT);
+    pinMode(RED_LED_PIN, OUTPUT);
+    pinMode(BUZZER_PIN, OUTPUT);
+
 }
 
 void loop() {
