@@ -358,16 +358,9 @@ private:
         tft.setTextSize(2);
 
         tft.println("7-Day Forecast:");
-        /*for (int i = 0; i < 7; i++) {
+        for (int i = 0; i < 7; i++) {
             tft.println("Day " + String(i + 1) + ": Code " + String(forecastWeatherCodes[i]));
-        }*/
-        tft.println("Day 1: MAINLY CLEAR");
-        tft.println("Day 2: OVERCAST");
-        tft.println("Day 3: RAIN SHOWERS MODERATE");
-        tft.println("Day 4: RAIN SHOWERS LIGHT");
-        tft.println("Day 5: OVERCAST");
-        tft.println("Day 6: OVERCAST");
-        tft.println("Day 7: OVERCAST");
+        }
     }
 
     void handleButtonInput() {
